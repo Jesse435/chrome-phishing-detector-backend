@@ -21,13 +21,23 @@ def predict():
     try:
         data = request.get_json()
 
-        # Convert JSON to DataFrame
-        df = pd.DataFrame([data])
+        # Map extension features to model features
+        mapped = {
+            "length_url": data.get("urlLength", 0),
+            "nb_dots": data.get("subdomainCount", 0),
+            "nb_at": 1 if data.get("hasAtSymbol") else 0,
+            "ratio_extHyperlinks": data.get("externalLinks", 0),
+            "safe_anchor": data.get("keywordCount", 0),
+            "web_traffic": 0,
+            "google_index": 1,
+            "page_rank": 2
+        }
 
-        # Ensure feature alignment with training
+        df = pd.DataFrame([mapped])
+
+        # Align remaining model columns
         df = df.reindex(columns=model.feature_names_in_, fill_value=0)
 
-        # Prediction
         prediction = model.predict(df)[0]
         probability = model.predict_proba(df).max()
 
