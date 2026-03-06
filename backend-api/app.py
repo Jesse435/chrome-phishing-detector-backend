@@ -20,6 +20,7 @@ def home():
 def predict():
     try:
         data = request.get_json()
+        print("Incoming features:", data)
 
         # -----------------------------
         # SECURITY RULE LAYER
