@@ -2,39 +2,67 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import joblib
 import pandas as pd
+import whois
+from datetime import datetime
 
-# Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Load trained model
+# Load trained ML model
 model = joblib.load("phishing_model.pkl")
 
-# Home route (health check)
+
+# -----------------------------
+# DOMAIN AGE CHECK
+# -----------------------------
+def get_domain_age(url):
+    try:
+        domain = url.split("//")[-1].split("/")[0]
+        w = whois.whois(domain)
+
+        creation = w.creation_date
+
+        if isinstance(creation, list):
+            creation = creation[0]
+
+        age_days = (datetime.now() - creation).days
+        return age_days
+
+    except:
+        return None
+
+
+# -----------------------------
+# HEALTH CHECK
+# -----------------------------
 @app.route("/")
 def home():
     return "Phishing Detection API is running"
 
-# Prediction route
+
+# -----------------------------
+# PREDICTION ROUTE
+# -----------------------------
 @app.route("/predict", methods=["POST"])
 def predict():
+
     try:
         data = request.get_json()
         print("Incoming features:", data)
 
-        # -----------------------------
-        # SECURITY RULE LAYER
-        # -----------------------------
         risk = 0
         reasons = []
 
+        # -----------------------------
+        # RULE BASED DETECTION
+        # -----------------------------
         if data.get("hasIP"):
             risk += 40
-            reasons.append("URL contains an IP address")
+            reasons.append("URL contains IP address")
 
         if data.get("hasAtSymbol"):
             risk += 25
-            reasons.append("URL contains '@' symbol")
+            reasons.append("@ symbol found in URL")
 
         if data.get("subdomainCount", 0) > 3:
             risk += 15
@@ -42,7 +70,7 @@ def predict():
 
         if data.get("urlLength", 0) > 75:
             risk += 10
-            reasons.append("URL is unusually long")
+            reasons.append("URL length unusually long")
 
         if data.get("keywordCount", 0) > 2:
             risk += 15
@@ -54,11 +82,20 @@ def predict():
 
         if data.get("iframeCount", 0) > 3:
             risk += 10
-            reasons.append("Multiple iframes detected")
+            reasons.append("Multiple iframes present")
 
         if data.get("externalLinks", 0) > data.get("internalLinks", 0):
             risk += 10
             reasons.append("High number of external links")
+
+        # -----------------------------
+        # DOMAIN AGE SIGNAL
+        # -----------------------------
+        age = get_domain_age(data.get("url"))
+
+        if age and age < 90:
+            risk += 20
+            reasons.append("Domain registered recently")
 
         # -----------------------------
         # ML MODEL LAYER
@@ -83,9 +120,9 @@ def predict():
         ml_score = probability * 100
 
         # -----------------------------
-        # COMBINE RULES + ML
+        # COMBINED SCORE
         # -----------------------------
-        final_score = (risk + ml_score) / 2
+        final_score = (risk * 0.6) + (ml_score * 0.4)
 
         if final_score < 30:
             level = "Safe"
@@ -105,23 +142,9 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-        df = pd.DataFrame([mapped])
 
-        # Align remaining model columns
-        df = df.reindex(columns=model.feature_names_in_, fill_value=0)
-
-        prediction = model.predict(df)[0]
-        probability = model.predict_proba(df).max()
-
-        return jsonify({
-            "prediction": "phishing" if prediction == 1 else "legitimate",
-            "confidence": round(float(probability), 4)
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-
+# -----------------------------
+# RUN SERVER
+# -----------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
