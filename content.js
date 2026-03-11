@@ -1,53 +1,95 @@
 function extractFeatures() {
-  const url = window.location.href;
 
-  // URL features
+  const url = window.location.href;
+  const hostname = window.location.hostname;
+
+  // -----------------------------
+  // URL FEATURES
+  // -----------------------------
   const urlLength = url.length;
-  const hasIP = /(\d{1,3}\.){3}\d{1,3}/.test(url);
+
+  const hasIP = /(\d{1,3}\.){3}\d{1,3}/.test(hostname);
+
   const hasHTTPS = url.startsWith("https://");
-  const subdomainCount = url.split(".").length - 2;
+
+  const subdomainCount = hostname.split(".").length - 2;
+
   const hasAtSymbol = url.includes("@");
 
-  // Page content features
+  // -----------------------------
+  // TEXT CONTENT
+  // -----------------------------
   const title = document.title || "";
+
   const bodyText = document.body.innerText || "";
 
+  const combinedText = (title + " " + bodyText).toLowerCase();
+
   const suspiciousKeywords = [
-    "login", "verify", "bank", "secure",
-    "account", "update", "confirm", "password"
+    "login",
+    "verify",
+    "bank",
+    "secure",
+    "account",
+    "update",
+    "confirm",
+    "password",
+    "signin",
+    "wallet",
+    "payment"
   ];
 
   let keywordCount = 0;
+
   suspiciousKeywords.forEach(word => {
-    if (bodyText.toLowerCase().includes(word)) {
+    if (combinedText.includes(word)) {
       keywordCount++;
     }
   });
 
-  // Forms
-  const forms = document.getElementsByTagName("form");
-  const hasLoginForm = Array.from(forms).some(form =>
-    form.innerHTML.toLowerCase().includes("password")
-  );
+  // -----------------------------
+  // LOGIN FORM DETECTION
+  // -----------------------------
+  const passwordFields = document.querySelectorAll('input[type="password"]');
 
-  // Links
-  const links = document.getElementsByTagName("a");
+  const hasLoginForm = passwordFields.length > 0;
+
+  // -----------------------------
+  // LINK ANALYSIS
+  // -----------------------------
+  const links = document.querySelectorAll("a");
+
   let externalLinks = 0;
   let internalLinks = 0;
 
-  Array.from(links).forEach(link => {
-    if (link.href.startsWith("http")) {
-      if (link.hostname !== window.location.hostname) {
+  links.forEach(link => {
+
+    const href = link.getAttribute("href");
+
+    if (!href) return;
+
+    if (href.startsWith("http")) {
+
+      if (!href.includes(hostname)) {
         externalLinks++;
       } else {
         internalLinks++;
       }
+
+    } else {
+
+      internalLinks++;
+
     }
+
   });
 
-  // Scripts & iframes
-  const scriptCount = document.getElementsByTagName("script").length;
-  const iframeCount = document.getElementsByTagName("iframe").length;
+  // -----------------------------
+  // SCRIPT & IFRAME COUNT
+  // -----------------------------
+  const scriptCount = document.querySelectorAll("script").length;
+
+  const iframeCount = document.querySelectorAll("iframe").length;
 
   return {
     url,
@@ -66,12 +108,20 @@ function extractFeatures() {
   };
 }
 
-// Message listener
+
+// -----------------------------
+// MESSAGE LISTENER
+// -----------------------------
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+
   if (request.action === "extract_features") {
+
     const features = extractFeatures();
+
     sendResponse(features);
+
   }
 
   return true;
+
 });

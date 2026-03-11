@@ -53,45 +53,81 @@ def predict():
         risk = 0
         reasons = []
 
+        url = data.get("url", "").lower()
+
         # -----------------------------
         # RULE BASED DETECTION
         # -----------------------------
-        if data.get("hasIP"):
-            risk += 40
-            reasons.append("URL contains IP address")
 
+        # IP address in URL
+        if data.get("hasIP"):
+            risk += 50
+            reasons.append("IP address used in URL")
+
+        # No HTTPS
+        if not data.get("hasHTTPS"):
+            risk += 15
+            reasons.append("Connection not using HTTPS")
+
+        # @ symbol
         if data.get("hasAtSymbol"):
             risk += 25
             reasons.append("@ symbol found in URL")
 
-        if data.get("subdomainCount", 0) > 3:
-            risk += 15
+        # Too many subdomains
+        if data.get("subdomainCount", 0) > 2:
+            risk += 20
             reasons.append("Too many subdomains")
 
+        # Long URL
         if data.get("urlLength", 0) > 75:
             risk += 10
             reasons.append("URL length unusually long")
 
-        if data.get("keywordCount", 0) > 2:
-            risk += 15
+        # Suspicious keywords
+        if data.get("keywordCount", 0) > 1:
+            risk += 20
             reasons.append("Suspicious keywords detected")
 
+        # Login form detection
         if data.get("hasLoginForm"):
-            risk += 20
+            risk += 35
             reasons.append("Login form detected")
 
-        if data.get("iframeCount", 0) > 3:
-            risk += 10
-            reasons.append("Multiple iframes present")
+        # Iframes
+        if data.get("iframeCount", 0) >= 2:
+            risk += 25
+            reasons.append("Multiple iframes detected")
 
+        # External links
         if data.get("externalLinks", 0) > data.get("internalLinks", 0):
-            risk += 10
+            risk += 15
             reasons.append("High number of external links")
+
+        # -----------------------------
+        # BRAND IMPERSONATION CHECK
+        # -----------------------------
+        brands = ["paypal", "apple", "amazon", "bank", "google", "microsoft"]
+
+        for brand in brands:
+            if brand in url:
+                risk += 25
+                reasons.append(f"Possible impersonation of {brand}")
+
+        # -----------------------------
+        # SUSPICIOUS DOMAIN EXTENSIONS
+        # -----------------------------
+        suspicious_tlds = [".xyz", ".top", ".club", ".online", ".site"]
+
+        for tld in suspicious_tlds:
+            if tld in url:
+                risk += 15
+                reasons.append("Suspicious domain extension")
 
         # -----------------------------
         # DOMAIN AGE SIGNAL
         # -----------------------------
-        age = get_domain_age(data.get("url"))
+        age = get_domain_age(url)
 
         if age and age < 90:
             risk += 20
@@ -122,7 +158,7 @@ def predict():
         # -----------------------------
         # COMBINED SCORE
         # -----------------------------
-        final_score = (risk * 0.6) + (ml_score * 0.4)
+        final_score = (risk * 0.65) + (ml_score * 0.35)
 
         if final_score < 30:
             level = "Safe"
