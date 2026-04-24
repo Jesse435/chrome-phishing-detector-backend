@@ -160,6 +160,10 @@ def predict():
         # -----------------------------
         final_score = (risk * 0.65) + (ml_score * 0.35)
 
+        # cap score
+        if final_score > 100:
+            final_score = 100
+
         if final_score < 30:
             level = "Safe"
         elif final_score < 60:
