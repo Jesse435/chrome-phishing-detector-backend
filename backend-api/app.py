@@ -45,6 +45,57 @@ FEATURE_LABELS = {
 }
 
 
+# Small trusted-root list to reduce false positives on major legitimate sites.
+# This is NOT a full whitelist. These sites are still analyzed, but weak signals
+# like login forms and long tracking URLs are weighted less heavily.
+TRUSTED_ROOT_DOMAINS = {
+    "amazon.com",
+    "amazon.co.uk",
+    "google.com",
+    "google.com.ng",
+    "microsoft.com",
+    "apple.com",
+    "paypal.com",
+    "facebook.com",
+    "instagram.com",
+    "linkedin.com",
+    "github.com"
+}
+
+PROTECTED_BRANDS = {
+    "amazon": ["amazon.com", "amazon.co.uk"],
+    "google": ["google.com", "google.com.ng"],
+    "microsoft": ["microsoft.com"],
+    "apple": ["apple.com"],
+    "paypal": ["paypal.com"],
+    "facebook": ["facebook.com"],
+}
+
+
+def extract_hostname(url):
+    try:
+        return url.split("//")[-1].split("/")[0].split(":")[0].lower()
+    except Exception:
+        return ""
+
+
+def is_domain_or_subdomain(hostname, root_domain):
+    return hostname == root_domain or hostname.endswith("." + root_domain)
+
+
+def is_trusted_domain(hostname):
+    return any(is_domain_or_subdomain(hostname, root) for root in TRUSTED_ROOT_DOMAINS)
+
+
+def detect_brand_impersonation(hostname):
+    """Flag domains that contain a protected brand name but are not official roots/subdomains."""
+    hits = []
+    for brand, official_roots in PROTECTED_BRANDS.items():
+        if brand in hostname and not any(is_domain_or_subdomain(hostname, root) for root in official_roots):
+            hits.append(brand)
+    return hits
+
+
 def get_domain_age(url):
     try:
         domain = url.split("//")[-1].split("/")[0]
@@ -145,59 +196,64 @@ def predict():
         suspicious_reasons = []
 
         url = data.get("url", "").lower()
-        hostname = url.split("//")[-1].split("/")[0].lower()
+        hostname = extract_hostname(url)
+        trusted_domain = is_trusted_domain(hostname)
+        impersonated_brands = detect_brand_impersonation(hostname)
 
         # -----------------------------
         # RULE-BASED DETECTION
         # -----------------------------
+        # Strong red flags: these remain serious even on familiar-looking sites.
         if data.get("hasIP"):
             rule_risk += 50
             suspicious_reasons.append("IP address used instead of a normal domain name")
 
         if not data.get("hasHTTPS"):
-            rule_risk += 15
+            rule_risk += 20
             suspicious_reasons.append("Connection is not using HTTPS")
 
         if data.get("hasAtSymbol"):
-            rule_risk += 25
+            rule_risk += 30
             suspicious_reasons.append("@ symbol found in the URL")
 
-        if data.get("subdomainCount", 0) > 2:
-            rule_risk += 20
-            suspicious_reasons.append("URL contains too many subdomains")
+        # Brand impersonation is a strong phishing indicator.
+        for brand in impersonated_brands:
+            rule_risk += 35
+            suspicious_reasons.append(f"Possible impersonation of {brand}")
 
-        if data.get("urlLength", 0) > 75:
-            rule_risk += 10
+        # Weak/contextual signals: reduce false positives on known legitimate domains.
+        subdomain_limit = 4 if trusted_domain else 2
+        if data.get("subdomainCount", 0) > subdomain_limit:
+            rule_risk += 8 if trusted_domain else 20
+            suspicious_reasons.append("URL contains an unusually high number of subdomains")
+
+        url_length_limit = 140 if trusted_domain else 75
+        if data.get("urlLength", 0) > url_length_limit:
+            rule_risk += 5 if trusted_domain else 10
             suspicious_reasons.append("URL length is unusually long")
 
-        if data.get("keywordCount", 0) > 1:
-            rule_risk += 20
-            suspicious_reasons.append("Suspicious keywords were detected")
+        # Keywords alone are weak. They become more meaningful when combined with login/payment context.
+        if data.get("keywordCount", 0) > 3 and (data.get("hasLoginForm") or not trusted_domain):
+            rule_risk += 5 if trusted_domain else 15
+            suspicious_reasons.append("Several sensitive account or payment-related keywords were detected")
 
-        if data.get("hasLoginForm"):
-            rule_risk += 35
-            suspicious_reasons.append("Login form detected on the page")
+        # A login form is normal on trusted platforms, but suspicious elsewhere.
+        if data.get("hasLoginForm") and not trusted_domain:
+            rule_risk += 30
+            suspicious_reasons.append("Login form detected on an untrusted or unknown domain")
 
-        if data.get("iframeCount", 0) >= 2:
-            rule_risk += 25
+        iframe_limit = 6 if trusted_domain else 2
+        if data.get("iframeCount", 0) >= iframe_limit:
+            rule_risk += 8 if trusted_domain else 20
             suspicious_reasons.append("Multiple iframes detected on the page")
 
-        if data.get("externalLinks", 0) > data.get("internalLinks", 0):
-            rule_risk += 15
+        # Large legitimate websites often use CDNs and external assets.
+        if not trusted_domain and data.get("externalLinks", 0) > data.get("internalLinks", 0):
+            rule_risk += 12
             suspicious_reasons.append("Page contains more external links than internal links")
 
-        # -----------------------------
-        # SAFER BRAND IMPERSONATION CHECK
-        # -----------------------------
-        # Avoid flagging google.com just because it contains "google".
-        protected_brands = ["paypal", "apple", "amazon", "google", "microsoft"]
-        for brand in protected_brands:
-            if brand in hostname and not hostname.endswith(f"{brand}.com"):
-                rule_risk += 25
-                suspicious_reasons.append(f"Possible impersonation of {brand}")
-
         # Generic banking keyword is weaker than brand impersonation.
-        if "bank" in hostname and data.get("hasLoginForm") and data.get("subdomainCount", 0) > 1:
+        if "bank" in hostname and data.get("hasLoginForm") and data.get("subdomainCount", 0) > 1 and not trusted_domain:
             rule_risk += 15
             suspicious_reasons.append("Banking-related domain pattern with login form detected")
 
@@ -208,10 +264,12 @@ def predict():
                 suspicious_reasons.append("Suspicious domain extension detected")
                 break
 
-        age = get_domain_age(url)
-        if age is not None and age < 90:
-            rule_risk += 20
-            suspicious_reasons.append("Domain appears to have been registered recently")
+        # Domain age checks can be slow and unreliable on major trusted domains.
+        if not trusted_domain:
+            age = get_domain_age(url)
+            if age is not None and age < 90:
+                rule_risk += 20
+                suspicious_reasons.append("Domain appears to have been registered recently")
 
         # -----------------------------
         # ML MODEL LAYER
@@ -223,6 +281,13 @@ def predict():
 
         final_score = (rule_risk * 0.65) + (ml_score * 0.35)
         final_score = max(0, min(final_score, 100))
+
+        # False-positive control: for verified trusted roots with no strong red flags,
+        # cap the final score below Suspicious. This is not a bypass because fake-brand
+        # domains, IP URLs, @ symbols, and missing HTTPS still keep their risk.
+        strong_red_flags = bool(data.get("hasIP") or data.get("hasAtSymbol") or not data.get("hasHTTPS") or impersonated_brands)
+        if trusted_domain and not strong_red_flags and final_score < 60:
+            final_score = min(final_score, 24)
 
         if final_score < 30:
             level = "Safe"

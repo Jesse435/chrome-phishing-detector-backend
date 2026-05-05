@@ -12,7 +12,13 @@ const btnIcon = document.getElementById("btnIcon");
 const btnText = document.getElementById("btnText");
 const analyzeBtn = document.getElementById("analyzeBtn");
 const autoToggle = document.getElementById("autoToggle");
+const learnMoreBtn = document.getElementById("learnMoreBtn");
+const learnMorePanel = document.getElementById("learnMorePanel");
+const xaiWrap = document.getElementById("xaiWrap");
+const xaiList = document.getElementById("xaiList");
+
 const CIRC = 138.2;
+const CACHE_VERSION = "v2";
 
 function setLoading(on) {
   analyzeBtn.classList.toggle("loading", on);
@@ -26,7 +32,26 @@ function setLoading(on) {
   }
 }
 
-function applyResult(score, level, reasons) {
+function clearList(element) {
+  while (element.firstChild) element.removeChild(element.firstChild);
+}
+
+function addReasonItem(parent, reason) {
+  const item = document.createElement("div");
+  item.className = "reason-item";
+
+  const icon = document.createElement("div");
+  icon.className = "reason-icon";
+
+  const text = document.createElement("span");
+  text.textContent = reason;
+
+  item.appendChild(icon);
+  item.appendChild(text);
+  parent.appendChild(item);
+}
+
+function applyResult(score, level, reasons, xaiExplanations = []) {
   setLoading(false);
 
   const cleanScore = Math.max(0, Math.min(100, Number(score) || 0));
@@ -48,25 +73,20 @@ function applyResult(score, level, reasons) {
   idleMsg.style.display = "none";
   statusDot.className = "status-dot live";
 
-  reasonsList.innerHTML = "";
+  clearList(reasonsList);
   if (Array.isArray(reasons) && reasons.length) {
-    reasons.forEach((reason) => {
-      const item = document.createElement("div");
-      item.className = "reason-item";
-
-      const icon = document.createElement("div");
-      icon.className = "reason-icon";
-
-      const text = document.createElement("span");
-      text.textContent = reason;
-
-      item.appendChild(icon);
-      item.appendChild(text);
-      reasonsList.appendChild(item);
-    });
+    reasons.forEach((reason) => addReasonItem(reasonsList, reason));
     reasonsWrap.style.display = "block";
   } else {
     reasonsWrap.style.display = "none";
+  }
+
+  clearList(xaiList);
+  if (Array.isArray(xaiExplanations) && xaiExplanations.length) {
+    xaiExplanations.forEach((reason) => addReasonItem(xaiList, reason));
+    xaiWrap.style.display = "block";
+  } else {
+    xaiWrap.style.display = "none";
   }
 }
 
@@ -79,6 +99,7 @@ function setError(msg) {
   riskFill.style.width = "0%";
   ringFill.style.strokeDashoffset = CIRC;
   reasonsWrap.style.display = "none";
+  xaiWrap.style.display = "none";
 }
 
 function getCurrentHostname(callback) {
@@ -90,6 +111,12 @@ function getCurrentHostname(callback) {
 
     try {
       const url = new URL(tabs[0].url);
+
+      if (!url.protocol.startsWith("http")) {
+        setError("Cannot analyze this page.");
+        return;
+      }
+
       callback(tabs[0], url.hostname);
     } catch (_) {
       setError("Cannot analyze this page.");
@@ -102,13 +129,13 @@ function analyzePage() {
 
   const timeout = setTimeout(() => {
     setError("Scan timeout. Try again.");
-  }, 15000);
+  }, 18000);
 
   getCurrentHostname((tab) => {
     chrome.tabs.sendMessage(tab.id, { action: "extract_features" }, (response) => {
       if (chrome.runtime.lastError || !response) {
         clearTimeout(timeout);
-        setError("Cannot analyze this page.");
+        setError("Cannot analyze this page. Refresh the tab and try again.");
         return;
       }
 
@@ -120,7 +147,12 @@ function analyzePage() {
           return;
         }
 
-        applyResult(result.riskScore, result.classification, result.reasons);
+        applyResult(
+          result.riskScore,
+          result.classification,
+          result.reasons,
+          result.xaiExplanations
+        );
       });
     });
   });
@@ -128,16 +160,25 @@ function analyzePage() {
 
 function loadCachedResult() {
   getCurrentHostname((tab, hostname) => {
-    const cacheKey = `scan:${hostname}`;
+    const cacheKey = `scan:${CACHE_VERSION}:${hostname}`;
 
     chrome.storage.local.get([cacheKey], (result) => {
       const data = result[cacheKey];
 
-      if (data && typeof data.classification === "string" && typeof data.riskScore === "number") {
-        applyResult(data.riskScore, data.classification, data.reasons);
-      } else {
-        analyzePage();
+      if (
+        data &&
+        typeof data.classification === "string" &&
+        typeof data.riskScore === "number"
+      ) {
+        applyResult(data.riskScore, data.classification, data.reasons, data.xaiExplanations);
+        return;
       }
+
+      chrome.storage.sync.get(["autoScan"], (settings) => {
+        if (settings.autoScan !== false) {
+          analyzePage();
+        }
+      });
     });
   });
 }
@@ -151,5 +192,13 @@ autoToggle.addEventListener("change", () => {
 });
 
 analyzeBtn.addEventListener("click", analyzePage);
+
+if (learnMoreBtn && learnMorePanel) {
+  learnMoreBtn.addEventListener("click", () => {
+    const isOpen = learnMorePanel.style.display === "block";
+    learnMorePanel.style.display = isOpen ? "none" : "block";
+    learnMoreBtn.textContent = isOpen ? "Learn More" : "Hide Guide";
+  });
+}
 
 loadCachedResult();

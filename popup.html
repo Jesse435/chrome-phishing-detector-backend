@@ -471,6 +471,53 @@
     box-shadow: 0 0 6px rgba(0,212,255,0.5);
   }
 
+
+  /* ── XAI / LEARN MORE ── */
+  .learn-more-btn {
+    width: 100%;
+    padding: 9px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-2);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+
+  .learn-more-panel {
+    display: none;
+    margin-top: 8px;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text-2);
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .learn-more-panel h4 {
+    color: var(--text-1);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    margin-bottom: 5px;
+    letter-spacing: 0.05em;
+  }
+
+  .severity-row {
+    margin-bottom: 8px;
+  }
+
+  .severity-row strong.safe { color: var(--safe); }
+  .severity-row strong.warn { color: var(--warn); }
+  .severity-row strong.danger { color: var(--danger); }
+
+
   /* ── FOOTER ── */
   .footer {
     margin-top: 12px;
@@ -556,6 +603,32 @@
       <div id="reasonsList"></div>
     </div>
 
+
+    <!-- XAI EXPLANATIONS -->
+    <div class="reasons-wrap" id="xaiWrap">
+      <div class="reasons-title">AI explanation</div>
+      <div id="xaiList"></div>
+    </div>
+
+    <!-- LEARN MORE -->
+    <button class="learn-more-btn" id="learnMoreBtn">Learn More</button>
+    <div class="learn-more-panel" id="learnMorePanel">
+      <h4>How to read SafeNest results</h4>
+      <div class="severity-row">
+        <strong class="safe">Safe:</strong> No strong phishing indicators were detected. Still check the website address before entering sensitive information.
+      </div>
+      <div class="severity-row">
+        <strong class="warn">Suspicious:</strong> Some warning signs were found. Be careful with login forms, payment forms, downloads, or requests for personal data.
+      </div>
+      <div class="severity-row">
+        <strong class="danger">High Risk:</strong> Strong phishing indicators were detected. Do not enter passwords, banking details, OTPs, or card information.
+      </div>
+      <div class="severity-row">
+        <strong>Common signals:</strong> IP-based URLs, missing HTTPS, very long URLs, too many subdomains, suspicious keywords, login forms, iframes, and recently registered domains.
+      </div>
+    </div>
+
+
     <!-- IDLE -->
     <div class="idle-msg" id="idleMsg">Run a scan to analyze the current site.</div>
 
@@ -588,7 +661,6 @@
 </div>
 
 <script src="popup.js"></script>
-<script src="ui.js"></script>
 
 </body>
 </html>
