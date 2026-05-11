@@ -53,7 +53,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })
       .then((response) => {
         clearTimeout(timeout);
-        if (!response.ok) throw new Error("Server error");
+
+        if (!response.ok) {
+          throw new Error("Server error");
+        }
+
         return response.json();
       })
       .then((data) => {
@@ -76,7 +80,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           timestamp: Date.now()
         };
 
-        applyBadge("Server Error", 0, errorResult.reasons);
+        applyBadge(errorResult.classification, errorResult.riskScore, errorResult.reasons);
         sendResponse(errorResult);
       });
   });
@@ -88,15 +92,22 @@ function buildCacheKey(rawUrl) {
   try {
     const url = new URL(rawUrl);
     url.hash = "";
-    return `scan:v4:${url.origin}${url.pathname}${url.search}`;
+    return `scan:v5:${url.origin}${url.pathname}${url.search}`;
   } catch (_) {
-    return `scan:v4:${rawUrl}`;
+    return `scan:v5:${rawUrl}`;
   }
 }
 
 function normalizeApiResult(data) {
+  let classification = data.risk_level || data.classification || "Unknown";
+
+  // Convert old backend label to new label
+  if (classification === "Suspicious") {
+    classification = "Low Risk";
+  }
+
   return {
-    classification: data.risk_level || data.classification || "Unknown",
+    classification,
     riskScore: Math.round(Number(data.risk_score ?? data.riskScore ?? 0)),
     reasons: Array.isArray(data.reasons) ? data.reasons : [],
     xai_explanations: Array.isArray(data.xai_explanations) ? data.xai_explanations : [],
@@ -110,6 +121,7 @@ function isValidCache(data) {
     typeof data.classification === "string" &&
     typeof data.riskScore === "number" &&
     Array.isArray(data.reasons) &&
+    Array.isArray(data.xai_explanations) &&
     typeof data.timestamp === "number" &&
     Date.now() - data.timestamp < CACHE_TTL
   );
@@ -122,7 +134,7 @@ function applyBadge(level, score = 0, reasons = []) {
   if (level === "Safe") {
     text = "✓";
     color = "green";
-  } else if (level === "Suspicious") {
+  } else if (level === "Low Risk" || level === "Suspicious") {
     text = "!";
     color = "orange";
   } else if (level === "High Risk") {
@@ -136,7 +148,11 @@ function applyBadge(level, score = 0, reasons = []) {
   chrome.action.setBadgeText({ text });
   chrome.action.setBadgeBackgroundColor({ color });
 
-  const reasonPreview = reasons && reasons.length ? `\n${reasons.slice(0, 3).join("\n")}` : "";
+  const reasonPreview =
+    reasons && reasons.length
+      ? `\n${reasons.slice(0, 3).join("\n")}`
+      : "";
+
   chrome.action.setTitle({
     title: `SafeNest\nStatus: ${level}\nRisk: ${score}/100${reasonPreview}`
   });

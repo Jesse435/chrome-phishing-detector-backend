@@ -41,12 +41,9 @@ FEATURE_LABELS = {
     "hasLoginForm": "login form presence"
 }
 
-# This is intentionally a small trust-adjustment list, not a bypass whitelist.
-# Trusted domains are still scanned. The list only reduces weak/contextual penalties
-# that commonly appear on legitimate large websites.
 TRUSTED_ROOT_DOMAINS = {
     "amazon.com", "amazon.co.uk",
-    "google.com", "google.com.ng",
+    "google.com", "google.com.ng", "youtube.com",
     "microsoft.com", "live.com", "office.com",
     "apple.com", "icloud.com",
     "paypal.com",
@@ -58,6 +55,7 @@ TRUSTED_ROOT_DOMAINS = {
 PROTECTED_BRANDS = {
     "amazon": ["amazon.com", "amazon.co.uk"],
     "google": ["google.com", "google.com.ng"],
+    "youtube": ["youtube.com"],
     "microsoft": ["microsoft.com", "live.com", "office.com"],
     "apple": ["apple.com", "icloud.com"],
     "paypal": ["paypal.com"],
@@ -112,8 +110,6 @@ def get_domain_age(url):
 
 
 def build_feature_frame(data):
-    # The ML model was trained on this feature family. Runtime-only features such as
-    # crossOriginIframeCount are used by the rule layer, not forced into the model.
     mapped = {
         "urlLength": data.get("urlLength", 0),
         "hasIP": 1 if data.get("hasIP") else 0,
@@ -166,7 +162,7 @@ def label_risk(score):
     if score < 30:
         return "Safe"
     if score < 60:
-        return "Suspicious"
+        return "Low Risk"
     return "High Risk"
 
 
@@ -201,25 +197,18 @@ def predict():
         impersonated_brands = detect_brand_impersonation(hostname)
 
         rule_risk = 0
-        suspicious_reasons = []
         strong_red_flags = []
         weak_signals = []
 
-        # -----------------------------
-        # STRONG RULE SIGNALS
-        # -----------------------------
         if data.get("hasIP"):
             rule_risk += 50
             strong_red_flags.append("IP address used instead of a normal domain name")
 
         if not data.get("hasHTTPS"):
-            # Local file and localhost testing should still show as a warning, but real
-            # external websites without HTTPS remain a serious issue.
             is_local = hostname in {"", "localhost", "127.0.0.1"} or url.startswith("file:")
             rule_risk += 15 if is_local else 25
             strong_red_flags.append("Connection is not using HTTPS")
 
-        # @ is dangerous mainly in the authority section, e.g. https://trusted.com@evil.com
         at_location = data.get("atSymbolLocation", "none")
         if data.get("hasAtSymbol") and at_location in {"authority", "unknown"}:
             rule_risk += 35
@@ -238,9 +227,6 @@ def predict():
                 strong_red_flags.append("Suspicious domain extension detected")
                 break
 
-        # -----------------------------
-        # WEAK/CONTEXTUAL RULE SIGNALS
-        # -----------------------------
         subdomain_limit = 4 if trusted_domain else 2
         if data.get("subdomainCount", 0) > subdomain_limit:
             rule_risk += 6 if trusted_domain else 18
@@ -264,7 +250,6 @@ def predict():
             rule_risk += 28
             strong_red_flags.append("Login form detected on an untrusted or unknown domain")
 
-        # Better iframe handling: iframe count alone is weak. Cross-origin or hidden iframes are more meaningful.
         cross_iframes = int(data.get("crossOriginIframeCount", 0) or 0)
         hidden_iframes = int(data.get("hiddenIframeCount", 0) or 0)
         iframe_count = int(data.get("iframeCount", 0) or 0)
@@ -297,19 +282,14 @@ def predict():
 
         suspicious_reasons = strong_red_flags + weak_signals
 
-        # -----------------------------
-        # ML MODEL LAYER
-        # -----------------------------
         df = build_feature_frame(data)
         prediction = model.predict(df)[0]
         probability = model.predict_proba(df)[0][1]
         ml_score = probability * 100
 
-        # Rule layer carries more weight because it includes runtime DOM/host signals.
         final_score = (rule_risk * 0.65) + (ml_score * 0.35)
         final_score = max(0, min(final_score, 100))
 
-        # Trusted-domain balancing: reduce only weak false positives, never strong red flags.
         has_strong = len(strong_red_flags) > 0
         if trusted_domain and not has_strong:
             if final_score < 60:
@@ -321,8 +301,8 @@ def predict():
 
         if level == "Safe":
             reasons = safe_reasons(trusted_domain)
-        elif level == "Suspicious":
-            reasons = suspicious_reasons[:3] or ["The model detected a moderate phishing risk pattern"]
+        elif level == "Low Risk":
+            reasons = suspicious_reasons[:3] or ["The system detected low-level risk indicators"]
         else:
             reasons = suspicious_reasons[:5] or ["The model detected a high phishing risk pattern"]
 
