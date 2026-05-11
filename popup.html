@@ -345,6 +345,66 @@
     background: var(--danger);
   }
 
+
+
+  /* ── AI / XAI SIGNALS ── */
+  .xai-wrap {
+    margin-bottom: 12px;
+    display: none;
+  }
+
+  .xai-title {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 7px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .xai-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .xai-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(0, 212, 255, 0.06);
+    border: 1px solid rgba(0, 212, 255, 0.22);
+    margin-bottom: 5px;
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.45;
+    animation: slide-in 0.3s ease both;
+  }
+
+  .xai-icon {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: rgba(0,212,255,0.12);
+    border: 1px solid rgba(0,212,255,0.35);
+    flex-shrink: 0;
+    margin-top: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .xai-icon::after {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--cyan);
+  }
+
   /* ── IDLE MESSAGE ── */
   .idle-msg {
     text-align: center;
@@ -472,13 +532,15 @@
   }
 
 
-  /* ── XAI / LEARN MORE ── */
-  .learn-more-btn {
+
+  /* ── LEARN MORE ── */
+  .learn-btn {
     width: 100%;
-    padding: 9px;
-    background: var(--bg3);
-    border: 1px solid var(--border);
+    margin-top: 2px;
+    padding: 9px 10px;
     border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(10, 22, 40, 0.75);
     color: var(--text-2);
     font-family: 'Rajdhani', sans-serif;
     font-size: 13px;
@@ -486,37 +548,55 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     cursor: pointer;
-    margin-top: 10px;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
   }
 
-  .learn-more-panel {
+  .learn-btn:hover {
+    border-color: var(--border-hi);
+    color: var(--text-1);
+    background: var(--bg2);
+  }
+
+  .learn-panel {
     display: none;
-    margin-top: 8px;
+    margin-top: 10px;
     padding: 10px;
     border-radius: 8px;
     border: 1px solid var(--border);
-    background: var(--bg2);
-    color: var(--text-2);
-    font-size: 11px;
-    line-height: 1.5;
+    background: rgba(5, 13, 26, 0.75);
   }
 
-  .learn-more-panel h4 {
-    color: var(--text-1);
+  .learn-panel.open { display: block; }
+
+  .learn-title {
     font-family: 'Rajdhani', sans-serif;
-    font-size: 13px;
-    margin-bottom: 5px;
-    letter-spacing: 0.05em;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.06em;
+    margin-bottom: 7px;
   }
 
-  .severity-row {
-    margin-bottom: 8px;
+  .learn-row {
+    padding: 7px 0;
+    border-top: 1px solid rgba(58,130,220,0.16);
   }
 
-  .severity-row strong.safe { color: var(--safe); }
-  .severity-row strong.warn { color: var(--warn); }
-  .severity-row strong.danger { color: var(--danger); }
+  .learn-row:first-of-type { border-top: none; }
 
+  .learn-row strong {
+    display: block;
+    font-size: 12px;
+    color: var(--text-1);
+    margin-bottom: 3px;
+  }
+
+  .learn-row span {
+    display: block;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--text-2);
+  }
 
   /* ── FOOTER ── */
   .footer {
@@ -604,30 +684,12 @@
     </div>
 
 
-    <!-- XAI EXPLANATIONS -->
-    <div class="reasons-wrap" id="xaiWrap">
-      <div class="reasons-title">AI explanation</div>
+
+    <!-- AI / XAI EXPLANATIONS -->
+    <div class="xai-wrap" id="xaiWrap">
+      <div class="xai-title">AI explanation signals</div>
       <div id="xaiList"></div>
     </div>
-
-    <!-- LEARN MORE -->
-    <button class="learn-more-btn" id="learnMoreBtn">Learn More</button>
-    <div class="learn-more-panel" id="learnMorePanel">
-      <h4>How to read SafeNest results</h4>
-      <div class="severity-row">
-        <strong class="safe">Safe:</strong> No strong phishing indicators were detected. Still check the website address before entering sensitive information.
-      </div>
-      <div class="severity-row">
-        <strong class="warn">Suspicious:</strong> Some warning signs were found. Be careful with login forms, payment forms, downloads, or requests for personal data.
-      </div>
-      <div class="severity-row">
-        <strong class="danger">High Risk:</strong> Strong phishing indicators were detected. Do not enter passwords, banking details, OTPs, or card information.
-      </div>
-      <div class="severity-row">
-        <strong>Common signals:</strong> IP-based URLs, missing HTTPS, very long URLs, too many subdomains, suspicious keywords, login forms, iframes, and recently registered domains.
-      </div>
-    </div>
-
 
     <!-- IDLE -->
     <div class="idle-msg" id="idleMsg">Run a scan to analyze the current site.</div>
@@ -644,13 +706,31 @@
       </div>
     </button>
 
-    <!-- AUTO SCAN -->
-    <div class="auto-row">
-      <span class="auto-label">Auto-scan on open</span>
-      <label class="toggle-wrap">
-        <input type="checkbox" id="autoToggle">
-        <div class="toggle-track"></div>
-      </label>
+    <!-- LEARN MORE -->
+    <button class="learn-btn" id="learnMoreBtn">Learn More</button>
+
+    <div class="learn-panel" id="learnMorePanel">
+      <div class="learn-title">How to read SafeNest warnings</div>
+
+      <div class="learn-row">
+        <strong>Safe</strong>
+        <span>No strong phishing indicators were found. You can continue normally, but still avoid entering sensitive information on unfamiliar pages.</span>
+      </div>
+
+      <div class="learn-row">
+        <strong>Suspicious</strong>
+        <span>Some warning signs were detected, such as unusual keywords, login forms, long URLs, or many external links. Proceed carefully and verify the domain.</span>
+      </div>
+
+      <div class="learn-row">
+        <strong>High Risk</strong>
+        <span>Multiple strong phishing indicators were detected. Do not enter passwords, banking details, or card information unless you are completely sure the site is legitimate.</span>
+      </div>
+
+      <div class="learn-row">
+        <strong>Common signals</strong>
+        <span>Examples include IP-based URLs, missing HTTPS, fake brand names, suspicious account verification messages, password forms, iframes, and unusually long tracking links.</span>
+      </div>
     </div>
 
   </div>

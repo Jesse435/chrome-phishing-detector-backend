@@ -6,19 +6,43 @@ const ringFill = document.getElementById("ringFill");
 const riskFill = document.getElementById("riskFill");
 const reasonsWrap = document.getElementById("reasonsWrap");
 const reasonsList = document.getElementById("reasonsList");
+const xaiWrap = document.getElementById("xaiWrap");
+const xaiList = document.getElementById("xaiList");
 const idleMsg = document.getElementById("idleMsg");
 const spinner = document.getElementById("spinner");
 const btnIcon = document.getElementById("btnIcon");
 const btnText = document.getElementById("btnText");
 const analyzeBtn = document.getElementById("analyzeBtn");
-const autoToggle = document.getElementById("autoToggle");
 const learnMoreBtn = document.getElementById("learnMoreBtn");
 const learnMorePanel = document.getElementById("learnMorePanel");
-const xaiWrap = document.getElementById("xaiWrap");
-const xaiList = document.getElementById("xaiList");
-
 const CIRC = 138.2;
-const CACHE_VERSION = "v2";
+
+
+function renderSignalList(container, wrapper, items, itemClass, iconClass) {
+  container.innerHTML = "";
+
+  if (!Array.isArray(items) || !items.length) {
+    wrapper.style.display = "none";
+    return;
+  }
+
+  items.forEach((textValue) => {
+    const item = document.createElement("div");
+    item.className = itemClass;
+
+    const icon = document.createElement("div");
+    icon.className = iconClass;
+
+    const text = document.createElement("span");
+    text.textContent = String(textValue);
+
+    item.appendChild(icon);
+    item.appendChild(text);
+    container.appendChild(item);
+  });
+
+  wrapper.style.display = "block";
+}
 
 function setLoading(on) {
   analyzeBtn.classList.toggle("loading", on);
@@ -30,25 +54,6 @@ function setLoading(on) {
     statusLabel.textContent = "Scanning…";
     statusDot.className = "status-dot";
   }
-}
-
-function clearList(element) {
-  while (element.firstChild) element.removeChild(element.firstChild);
-}
-
-function addReasonItem(parent, reason) {
-  const item = document.createElement("div");
-  item.className = "reason-item";
-
-  const icon = document.createElement("div");
-  icon.className = "reason-icon";
-
-  const text = document.createElement("span");
-  text.textContent = reason;
-
-  item.appendChild(icon);
-  item.appendChild(text);
-  parent.appendChild(item);
 }
 
 function applyResult(score, level, reasons, xaiExplanations = []) {
@@ -73,21 +78,8 @@ function applyResult(score, level, reasons, xaiExplanations = []) {
   idleMsg.style.display = "none";
   statusDot.className = "status-dot live";
 
-  clearList(reasonsList);
-  if (Array.isArray(reasons) && reasons.length) {
-    reasons.forEach((reason) => addReasonItem(reasonsList, reason));
-    reasonsWrap.style.display = "block";
-  } else {
-    reasonsWrap.style.display = "none";
-  }
-
-  clearList(xaiList);
-  if (Array.isArray(xaiExplanations) && xaiExplanations.length) {
-    xaiExplanations.forEach((reason) => addReasonItem(xaiList, reason));
-    xaiWrap.style.display = "block";
-  } else {
-    xaiWrap.style.display = "none";
-  }
+  renderSignalList(reasonsList, reasonsWrap, reasons, "reason-item", "reason-icon");
+  renderSignalList(xaiList, xaiWrap, xaiExplanations, "xai-item", "xai-icon");
 }
 
 function setError(msg) {
@@ -111,12 +103,6 @@ function getCurrentHostname(callback) {
 
     try {
       const url = new URL(tabs[0].url);
-
-      if (!url.protocol.startsWith("http")) {
-        setError("Cannot analyze this page.");
-        return;
-      }
-
       callback(tabs[0], url.hostname);
     } catch (_) {
       setError("Cannot analyze this page.");
@@ -129,13 +115,13 @@ function analyzePage() {
 
   const timeout = setTimeout(() => {
     setError("Scan timeout. Try again.");
-  }, 18000);
+  }, 15000);
 
   getCurrentHostname((tab) => {
     chrome.tabs.sendMessage(tab.id, { action: "extract_features" }, (response) => {
       if (chrome.runtime.lastError || !response) {
         clearTimeout(timeout);
-        setError("Cannot analyze this page. Refresh the tab and try again.");
+        setError("Cannot analyze this page.");
         return;
       }
 
@@ -147,58 +133,44 @@ function analyzePage() {
           return;
         }
 
-        applyResult(
-          result.riskScore,
-          result.classification,
-          result.reasons,
-          result.xaiExplanations
-        );
+        applyResult(result.riskScore, result.classification, result.reasons, result.xai_explanations);
       });
     });
   });
+}
+
+function buildCacheKey(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    url.hash = "";
+    return `scan:v3:${url.origin}${url.pathname}${url.search}`;
+  } catch (_) {
+    return `scan:v3:${rawUrl}`;
+  }
 }
 
 function loadCachedResult() {
   getCurrentHostname((tab, hostname) => {
-    const cacheKey = `scan:${CACHE_VERSION}:${hostname}`;
+    const cacheKey = buildCacheKey(tab.url);
 
     chrome.storage.local.get([cacheKey], (result) => {
       const data = result[cacheKey];
 
-      if (
-        data &&
-        typeof data.classification === "string" &&
-        typeof data.riskScore === "number"
-      ) {
-        applyResult(data.riskScore, data.classification, data.reasons, data.xaiExplanations);
-        return;
+      if (data && typeof data.classification === "string" && typeof data.riskScore === "number") {
+        applyResult(data.riskScore, data.classification, data.reasons, data.xai_explanations);
+      } else {
+        analyzePage();
       }
-
-      chrome.storage.sync.get(["autoScan"], (settings) => {
-        if (settings.autoScan !== false) {
-          analyzePage();
-        }
-      });
     });
   });
 }
 
-chrome.storage.sync.get(["autoScan"], (result) => {
-  autoToggle.checked = result.autoScan !== false;
-});
 
-autoToggle.addEventListener("change", () => {
-  chrome.storage.sync.set({ autoScan: autoToggle.checked });
+learnMoreBtn.addEventListener("click", () => {
+  learnMorePanel.classList.toggle("open");
+  learnMoreBtn.textContent = learnMorePanel.classList.contains("open") ? "Hide Details" : "Learn More";
 });
 
 analyzeBtn.addEventListener("click", analyzePage);
-
-if (learnMoreBtn && learnMorePanel) {
-  learnMoreBtn.addEventListener("click", () => {
-    const isOpen = learnMorePanel.style.display === "block";
-    learnMorePanel.style.display = isOpen ? "none" : "block";
-    learnMoreBtn.textContent = isOpen ? "Learn More" : "Hide Guide";
-  });
-}
 
 loadCachedResult();

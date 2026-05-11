@@ -1,20 +1,17 @@
-const CACHE_VERSION = "v2";
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (!request || request.action !== "process_features") return false;
+  if (request.action !== "process_features") return;
 
   const features = request.data;
 
   if (!features || !features.url) {
-    const invalidResult = {
+    sendResponse({
       classification: "Error",
       riskScore: 0,
       reasons: ["Invalid URL"],
-      xaiExplanations: [],
-      timestamp: Date.now()
-    };
-    sendResponse(invalidResult);
+      xai_explanations: []
+    });
     return true;
   }
 
@@ -22,18 +19,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   try {
     hostname = new URL(features.url).hostname;
   } catch (_) {
-    const invalidFormatResult = {
+    sendResponse({
       classification: "Error",
       riskScore: 0,
       reasons: ["Invalid URL format"],
-      xaiExplanations: [],
-      timestamp: Date.now()
-    };
-    sendResponse(invalidFormatResult);
+      xai_explanations: []
+    });
     return true;
   }
 
-  const cacheKey = `scan:${CACHE_VERSION}:${hostname}`;
+  const cacheKey = buildCacheKey(features.url);
 
   chrome.storage.local.get([cacheKey], (cached) => {
     const cachedData = cached[cacheKey];
@@ -48,7 +43,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("🌐 Fetching from API:", hostname);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 12000);
 
     fetch("https://chrome-phishing-detector-backend.onrender.com/predict", {
       method: "POST",
@@ -58,11 +53,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })
       .then((response) => {
         clearTimeout(timeout);
-        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+        if (!response.ok) throw new Error("Server error");
         return response.json();
       })
       .then((data) => {
-        const result = normalizeApiResult(data, hostname);
+        const result = normalizeApiResult(data);
 
         chrome.storage.local.set({ [cacheKey]: result });
 
@@ -77,9 +72,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           classification: "Server Error",
           riskScore: 0,
           reasons: ["Unable to contact security server"],
-          xaiExplanations: [],
-          rawRuleReasons: [],
-          hostname,
+          xai_explanations: [],
           timestamp: Date.now()
         };
 
@@ -91,19 +84,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true;
 });
 
-function normalizeApiResult(data, hostname) {
-  const riskScore = Math.round(Number(data.risk_score ?? data.riskScore ?? 0));
-  const classification = data.risk_level || data.classification || "Unknown";
+function buildCacheKey(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    url.hash = "";
+    return `scan:v4:${url.origin}${url.pathname}${url.search}`;
+  } catch (_) {
+    return `scan:v4:${rawUrl}`;
+  }
+}
 
+function normalizeApiResult(data) {
   return {
-    classification,
-    riskScore: Math.max(0, Math.min(100, riskScore)),
+    classification: data.risk_level || data.classification || "Unknown",
+    riskScore: Math.round(Number(data.risk_score ?? data.riskScore ?? 0)),
     reasons: Array.isArray(data.reasons) ? data.reasons : [],
-    xaiExplanations: Array.isArray(data.xai_explanations) ? data.xai_explanations : [],
-    rawRuleReasons: Array.isArray(data.raw_rule_reasons) ? data.raw_rule_reasons : [],
-    confidence: Number(data.confidence ?? 0),
-    prediction: data.prediction || "",
-    hostname,
+    xai_explanations: Array.isArray(data.xai_explanations) ? data.xai_explanations : [],
     timestamp: Date.now()
   };
 }
@@ -114,7 +110,6 @@ function isValidCache(data) {
     typeof data.classification === "string" &&
     typeof data.riskScore === "number" &&
     Array.isArray(data.reasons) &&
-    Array.isArray(data.xaiExplanations) &&
     typeof data.timestamp === "number" &&
     Date.now() - data.timestamp < CACHE_TTL
   );
