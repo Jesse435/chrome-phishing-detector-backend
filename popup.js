@@ -60,7 +60,7 @@ function applyResult(score, level, reasons, xaiExplanations = []) {
   setLoading(false);
 
   const cleanScore = Math.max(0, Math.min(100, Number(score) || 0));
-  const cls = level === "Safe" ? "safe" : level === "Suspicious" ? "warn" : "danger";
+  const cls = level === "Safe" ? "safe" : (level === "Low Risk" || level === "Suspicious") ? "warn" : "danger";
 
   statusCard.className = "status-card " + cls;
   statusLabel.className = "status-label " + cls;
@@ -69,7 +69,7 @@ function applyResult(score, level, reasons, xaiExplanations = []) {
 
   statusLabel.textContent =
     level === "Safe" ? "✓ Safe" :
-    level === "Suspicious" ? "⚠ Suspicious" :
+    (level === "Low Risk" || level === "Suspicious") ? "⚠ Low Risk" :
     level === "High Risk" ? "✗ High Risk" : level;
 
   scoreNum.textContent = cleanScore;
