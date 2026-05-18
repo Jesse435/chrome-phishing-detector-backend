@@ -42,6 +42,7 @@ FEATURE_LABELS = {
 }
 
 TRUSTED_ROOT_DOMAINS = {
+    # Major trusted web platforms
     "amazon.com", "amazon.co.uk",
     "google.com", "google.com.ng", "youtube.com",
     "microsoft.com", "live.com", "office.com",
@@ -49,9 +50,21 @@ TRUSTED_ROOT_DOMAINS = {
     "paypal.com",
     "facebook.com", "instagram.com", "linkedin.com",
     "github.com", "wikipedia.org",
-    "openai.com", "chatgpt.com"
-}
+    "openai.com", "chatgpt.com",
 
+    # Nigerian banks and finance platforms used for online-banking testing
+    "gtbank.com", "gtworld.com",
+    "accessbankplc.com", "zenithbank.com", "ubagroup.com",
+    "firstbanknigeria.com", "fcmb.com", "stanbicibtcbank.com",
+    "sterling.ng", "unionbankng.com", "fidelitybank.ng",
+    "wemabank.com", "alat.ng", "polarisbanklimited.com",
+    "providusbank.com", "keystonebankng.com", "ecobank.com",
+    "opayweb.com", "kuda.com", "palmpay.com", "moniepoint.com",
+
+    # Common international banking domains for broader demo/testing coverage
+    "jpmorgan.com", "chase.com", "bankofamerica.com", "wellsfargo.com",
+    "citibank.com", "hsbc.com", "barclays.co.uk", "standardchartered.com"
+}
 PROTECTED_BRANDS = {
     "amazon": ["amazon.com", "amazon.co.uk"],
     "google": ["google.com", "google.com.ng"],
@@ -62,8 +75,42 @@ PROTECTED_BRANDS = {
     "facebook": ["facebook.com"],
     "openai": ["openai.com", "chatgpt.com"],
     "chatgpt": ["chatgpt.com"],
-}
 
+    # Banking brands. These help catch fake domains that contain bank names
+    # but are not hosted on the bank's verified root domain.
+    "gtbank": ["gtbank.com", "gtworld.com"],
+    "guarantytrust": ["gtbank.com", "gtworld.com"],
+    "accessbank": ["accessbankplc.com"],
+    "zenithbank": ["zenithbank.com"],
+    "uba": ["ubagroup.com"],
+    "unitedbankforafrica": ["ubagroup.com"],
+    "firstbank": ["firstbanknigeria.com"],
+    "fcmb": ["fcmb.com"],
+    "stanbic": ["stanbicibtcbank.com"],
+    "sterlingbank": ["sterling.ng"],
+    "unionbank": ["unionbankng.com"],
+    "fidelitybank": ["fidelitybank.ng"],
+    "wemabank": ["wemabank.com", "alat.ng"],
+    "alat": ["alat.ng"],
+    "polarisbank": ["polarisbanklimited.com"],
+    "providusbank": ["providusbank.com"],
+    "keystonebank": ["keystonebankng.com"],
+    "ecobank": ["ecobank.com"],
+    "opay": ["opayweb.com"],
+    "kuda": ["kuda.com"],
+    "palmpay": ["palmpay.com"],
+    "moniepoint": ["moniepoint.com"],
+
+    # International banking brands for non-Nigerian demos.
+    "jpmorgan": ["jpmorgan.com", "chase.com"],
+    "chase": ["chase.com"],
+    "bankofamerica": ["bankofamerica.com"],
+    "wellsfargo": ["wellsfargo.com"],
+    "citibank": ["citibank.com"],
+    "hsbc": ["hsbc.com"],
+    "barclays": ["barclays.co.uk"],
+    "standardchartered": ["standardchartered.com"]
+}
 SUSPICIOUS_TLDS = {".xyz", ".top", ".club", ".online", ".site", ".work", ".click"}
 
 
@@ -81,6 +128,21 @@ def is_domain_or_subdomain(hostname, root_domain):
 
 def is_trusted_domain(hostname):
     return any(is_domain_or_subdomain(hostname, root) for root in TRUSTED_ROOT_DOMAINS)
+
+
+def is_trusted_financial_domain(hostname):
+    financial_roots = {
+        "gtbank.com", "gtworld.com", "accessbankplc.com", "zenithbank.com",
+        "ubagroup.com", "firstbanknigeria.com", "fcmb.com",
+        "stanbicibtcbank.com", "sterling.ng", "unionbankng.com",
+        "fidelitybank.ng", "wemabank.com", "alat.ng",
+        "polarisbanklimited.com", "providusbank.com", "keystonebankng.com",
+        "ecobank.com", "opayweb.com", "kuda.com", "palmpay.com",
+        "moniepoint.com", "jpmorgan.com", "chase.com",
+        "bankofamerica.com", "wellsfargo.com", "citibank.com",
+        "hsbc.com", "barclays.co.uk", "standardchartered.com"
+    }
+    return any(is_domain_or_subdomain(hostname, root) for root in financial_roots)
 
 
 def detect_brand_impersonation(hostname):
@@ -194,6 +256,7 @@ def predict():
         url = str(data.get("url", "")).lower()
         hostname = extract_hostname(url)
         trusted_domain = is_trusted_domain(hostname)
+        trusted_financial_domain = is_trusted_financial_domain(hostname)
         impersonated_brands = detect_brand_impersonation(hostname)
 
         rule_risk = 0
@@ -291,6 +354,14 @@ def predict():
         final_score = max(0, min(final_score, 100))
 
         has_strong = len(strong_red_flags) > 0
+
+        # Reputation-aware banking adjustment:
+        # Real banking sites naturally contain login forms, security words,
+        # redirects, scripts, and long URLs. These weak signals should not push
+        # a verified bank domain into Low Risk unless strong red flags exist.
+        if trusted_financial_domain and data.get("hasHTTPS") and not has_strong:
+            final_score = min(final_score, 24)
+
         if trusted_domain and not has_strong:
             if final_score < 60:
                 final_score = min(final_score, 24)
@@ -319,6 +390,7 @@ def predict():
             "debug": {
                 "hostname": hostname,
                 "trusted_domain": trusted_domain,
+                "trusted_financial_domain": trusted_financial_domain,
                 "rule_risk": round(rule_risk, 2),
                 "ml_score": round(ml_score, 2),
                 "strong_red_flags": strong_red_flags,
